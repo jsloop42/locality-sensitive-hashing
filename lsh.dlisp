@@ -1,0 +1,145 @@
+(defmodule lsh
+  (export all))
+
+(def dataset 
+  ["hello world"
+   "hello there"
+   "this is a fine world"])
+
+(def shingle-size 2)
+
+(defun list->string (xs)
+  "Converts a list of individual string characters to a string word."
+  (apply str xs))
+
+(defun range (n acc)
+  (if (= n 0)
+    (reverse acc)
+    (range (dec n) (conj acc n))))
+
+(defun range (n)
+  "Generates a sequence of number starting from 1 till the given upper bound."
+  (range n []))
+
+(defun shingle (txt n acc)
+  (if (= (count txt) n)
+    (conj acc txt)
+    (shingle (rest txt) n (conj acc (nth-tail 0 (dec n) txt)))))
+
+(defun shingle (txt n)
+  "Generate k-grams which is a group of k sequential tokens."
+  (->> (shingle (seq txt) n [])
+       (map (fn [x] (list->string x)))))
+
+(def shingles-xs (map (fn (x) (apply set (shingle x shingle-size))) dataset))
+
+(def vocab (into [] (apply union shingles-xs)))
+
+(defun one-hot-encode (kgrams vocab)
+  (foldl (fn (x acc) 
+           (if (contains? x kgrams)
+             (conj acc 1)
+             (conj acc 0)))
+         [] vocab))
+
+(def one-hot-xs (map (fn (x) (one-hot-encode x vocab)) shingles-xs))
+
+(defun get-shuffled-rand-vec ()
+  "Returns a list of random indices with length same as the vocab."
+  (map (fn (_) (shuffle (range (count vocab)))) (range 20)))
+
+(defun minhash (rhash shingle-xs i)
+  (if (empty? rhash)
+    acc
+    (let ((hash (first rhash))
+          (idx-val (nth i shingle-xs)))
+      (if (= idx-val 1)
+        hash
+        (minhash (rest rhash) shingle-xs (inc i))))))
+
+(defun minhash (rhash shingles-xs)
+  "Returns the index where signature hash has a 1 in shingles list."
+  (minhash rhash shingles-xs 0))
+
+(defun signature (encoded-xs rand-vec) 
+  (map (fn (x) (minhash x encoded-xs)) rand-vec))
+
+;; Min hashed signatures generated from 20 random hash vectors for each dataset.
+(def sig-xs (map (fn (x) (signature x (get-shuffled-rand-vec))) one-hot-xs))
+
+(def rand-vec (get-shuffled-rand-vec))
+(def sig-a (signature (nth 0 one-hot-xs) rand-vec))
+(def sig-b (signature (nth 1 one-hot-xs) rand-vec))
+(def sig-c (signature (nth 2 one-hot-xs) rand-vec))
+
+(print "\nsig-a: " sig-a)
+(print "\nsig-b: " sig-b)
+(print "\nsig-c: " sig-c "\n")
+
+; sig-a: [24 5 16 24 16 13 8 18 18 19 16 2 12 24 9 10 17 17 16 20]
+; sig-b: [24 5 16 24 16 13 8 18 18 19 16 2 12 24 9 10 17 17 16 20]
+; sig-c: [2 12 10 18 17 2 11 12 11 23 20 16 6 2 5 22 16 24 18 13]
+
+(defun jaccard (a b)
+  "Find Jaccard's similarity between two sets."
+  (/ (count (intersect a b)) (count (union a b))))
+
+(def j-ab (jaccard (into (set) [(nth 0 dataset)]) (into (set) [(nth 1 dataset)])))
+(def j-sig-ab (jaccard (into (set) sig-a) (into (set) sig-b)))
+(println "\nj(a, b), j(sig-a, sig-b)")
+(println j-ab j-sig-ab)
+
+(def j-ac (jaccard (into (set) [(nth 0 dataset)]) (into (set) [(nth 2 dataset)])))
+(def j-sig-ac (jaccard (into (set) sig-a) (into (set) sig-c)))
+(println "j(a, c), j(sig-a, sig-c)")
+(println j-ac j-sig-ac)
+
+(def j-bc (jaccard (into (set) [(nth 1 dataset)]) (into (set) [(nth 2 dataset)])))
+(def j-sig-bc (jaccard (into (set) sig-b) (into (set) sig-c)))
+(println "j(b, c), j(sig-b, sig-c)")
+(println j-bc j-sig-bc)
+
+; j(a, b), j(sig-a, sig-b)
+; = 0.5, 1
+
+; j(a, c), j(sig-a, sig-c)
+; = 0.5, 0.76470588235294117647058823529411764705
+
+; j(b, c), j(sig-b, sig-c)
+; 0.5, 0.76470588235294117647058823529411764705
+
+(defun band (sig-xs size len acc)
+  (if (= size len)
+    (conj acc (nth-tail 0 (dec len) sig-xs))
+    (band (nth-tail size (dec len) sig-xs)
+          size 
+          (- len size) 
+          (conj acc (take size sig-xs)))))
+
+(defun band (sig-xs size)
+  "Split the signature vector into rows or bands of the given size."
+  (band sig-xs size (count sig-xs) []))
+
+(def band-a (band sig-a 2))
+(def band-b (band sig-b 2))
+(def band-c (band sig-c 2))
+
+(println "\nband-a" band-a)
+(println "band-b" band-b)
+(println "band-c" band-c "\n")
+
+;; band-a [[24 5] [16 24] [16 13] [8 18] [18 19] [16 2] [12 24] [9 10] [17 17] [16 20]]
+;; band-b [[24 5] [16 24] [16 13] [8 18] [18 19] [16 2] [12 24] [9 10] [17 17] [16 20]]
+;; band-c [[2 12] [10 18] [17 2] [11 12] [11 23] [20 16] [6 2] [5 22] [16 24] [18 13]]
+
+(defun lsh (band-x band-y)
+  "Checks for any collision for elements in the given bands."
+  (if (empty? band-x) 
+    false
+    (if (= (first band-x) (first band-y))
+      true
+      (lsh (rest band-x) (rest band-y)))))
+
+(println (lsh band-a band-b))  ; true
+(println (lsh band-a band-c))  ; false
+(println (lsh band-b band-c))  ; false
