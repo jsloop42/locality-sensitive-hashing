@@ -81,7 +81,7 @@
 ; sig-c: [2 12 10 18 17 2 11 12 11 23 20 16 6 2 5 22 16 24 18 13]
 
 (defun jaccard (a b)
-  "Find Jaccard's similarity between two sets."
+  "Find Jaccard similarity between two sets."
   (/ (count (intersect a b)) (count (union a b))))
 
 (def j-ab (jaccard (into (set) [(nth 0 dataset)]) (into (set) [(nth 1 dataset)])))
