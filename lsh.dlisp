@@ -29,7 +29,7 @@
 (defun shingle (txt n)
   "Generate k-grams which is a group of k sequential tokens."
   (->> (shingle (seq txt) n [])
-       (map (fn [x] (list->string x)))))
+       (map (fn (x) (list->string x)))))
 
 (def shingles-xs (map (fn (x) (apply set (shingle x shingle-size))) dataset))
 
